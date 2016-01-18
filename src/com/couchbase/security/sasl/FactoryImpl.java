@@ -16,8 +16,7 @@
  */
 package com.couchbase.security.sasl;
 
-import com.couchbase.security.sasl.scram.ScramSha1Client;
-import com.couchbase.security.sasl.scram.ScramSha1Server;
+import com.couchbase.security.sasl.scram.Sha1Impl;
 
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.sasl.*;
@@ -29,7 +28,7 @@ import java.util.Map;
  * authentication methos
  */
 public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
-    private static final String[] supportedMechanisms = new String[]{ScramSha1Client.NAME};
+    private static final String[] supportedMechanisms = new String[]{Sha1Impl.NAME};
 
     @Override
     public SaslClient createSaslClient(String[] mechanisms,
@@ -40,7 +39,7 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
                                        CallbackHandler cbh) throws SaslException {
         boolean found = false;
         for (String m : mechanisms) {
-            if (m.equals(ScramSha1Client.NAME)) {
+            if (m.equals(Sha1Impl.NAME)) {
                 found = true;
             }
         }
@@ -60,7 +59,7 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
         // protocol, servername and props is currently being ignored...
 
         try {
-            return new ScramSha1Client(cbh);
+            return new Sha1Impl(true, cbh);
         } catch (NoSuchAlgorithmException e) {
             // The JAVA runtime don't support all the algorithms we need
             return null;
@@ -73,12 +72,12 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
                                        String serverName,
                                        Map<String, ?> props,
                                        CallbackHandler cbh) throws SaslException {
-        if (!mechanism.equals(ScramSha1Server.NAME)) {
+        if (!mechanism.equals(Sha1Impl.NAME)) {
             return null;
         }
         // protocol, serverName and props is not being used
         try {
-            return new ScramSha1Server(cbh);
+            return new Sha1Impl(false, cbh);
         } catch (NoSuchAlgorithmException e) {
             // The JAVA runtime don't support all the algorithms we need
             return null;
