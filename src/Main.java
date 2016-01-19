@@ -28,7 +28,7 @@ import java.io.IOException;
  */
 public class Main implements CallbackHandler {
     private void test() {
-        String[] mechs = {"SCRAM-SHA1"};
+        String[] mechs = {"SCRAM-SHA1", "CRAM-MD5", "PLAIN"};
 
         try {
             SaslClient client = Sasl.createSaslClient(mechs, null, "couchbase",

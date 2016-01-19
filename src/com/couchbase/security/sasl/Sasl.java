@@ -38,19 +38,28 @@ public class Sasl {
                                               Map<String, ?> props,
                                               CallbackHandler cbh) throws
                                                                    SaslException {
-        // First try to see if the Java Runtime system have a class that supports this
-        SaslClient ret;
+        for (String mech : mechanisms) {
+            String[] mechs = new String[]{mech};
 
-        ret = javax.security.sasl.Sasl
-                .createSaslClient(mechanisms, authorizationId, protocol,
-                                  serverName, props, cbh);
-        if (ret == null) {
-            // Try our own implementations
-            FactoryImpl factory = new FactoryImpl();
-            ret = factory.createSaslClient(mechanisms, authorizationId,
-                                           protocol, serverName, props, cbh);
+            // First try to see if the Java Runtime system have a class that supports this
+            SaslClient ret;
+
+            ret = javax.security.sasl.Sasl
+                    .createSaslClient(mechs, authorizationId, protocol,
+                                      serverName, props, cbh);
+            if (ret == null) {
+                // Try our own implementations
+                FactoryImpl factory = new FactoryImpl();
+                ret = factory.createSaslClient(mechs, authorizationId,
+                                               protocol, serverName, props,
+                                               cbh);
+            }
+            if (ret != null) {
+                return ret;
+            }
         }
-        return ret;
+
+        return null;
     }
 
     public static SaslServer createSaslServer(String mechanism,
