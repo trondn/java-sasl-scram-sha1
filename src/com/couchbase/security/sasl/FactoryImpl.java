@@ -16,7 +16,7 @@
  */
 package com.couchbase.security.sasl;
 
-import com.couchbase.security.sasl.scram.Sha1Impl;
+import com.couchbase.security.sasl.scram.ShaImpl;
 
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.sasl.*;
@@ -24,11 +24,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 
 /**
- * The SaslClientFactory supporting SCRAM-SHA1 CRAM-MD5 and PLAIN
- * authentication methos
+ * The SaslClientFactory supporting SCRAM-SHA512, SCRAM-SHA256 and SCRAM-SHA1
+ * authentication methods
+ *
+ * @author Trond Norbye
+ * @version 1.0
  */
 public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
-    private static final String[] supportedMechanisms = new String[]{Sha1Impl.NAME};
+    private static final String[] supportedMechanisms =
+            new String[]{"SCRAM-SHA512", "SCRAM-SHA256", "SCRAM-SHA1"};
 
     @Override
     public SaslClient createSaslClient(String[] mechanisms,
@@ -36,15 +40,22 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
                                        String protocol,
                                        String serverName,
                                        Map<String, ?> props,
-                                       CallbackHandler cbh) throws SaslException {
-        boolean found = false;
+                                       CallbackHandler cbh) throws
+                                                            SaslException {
+
+        int sha = 0;
+
         for (String m : mechanisms) {
-            if (m.equals(Sha1Impl.NAME)) {
-                found = true;
+            if (m.equals("SCRAM-SHA512")) {
+                sha = 512;
+            } else if (m.equals("SCRAM-SHA256")) {
+                sha = 256;
+            } else if (m.equals("SCRAM-SHA1")) {
+                sha = 1;
             }
         }
 
-        if (!found) {
+        if (sha == 0) {
             return null;
         }
 
@@ -59,7 +70,7 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
         // protocol, servername and props is currently being ignored...
 
         try {
-            return new Sha1Impl(true, cbh);
+            return new ShaImpl(true, cbh, sha);
         } catch (NoSuchAlgorithmException e) {
             // The JAVA runtime don't support all the algorithms we need
             return null;
@@ -71,13 +82,24 @@ public class FactoryImpl implements SaslClientFactory, SaslServerFactory {
                                        String protocol,
                                        String serverName,
                                        Map<String, ?> props,
-                                       CallbackHandler cbh) throws SaslException {
-        if (!mechanism.equals(Sha1Impl.NAME)) {
+                                       CallbackHandler cbh) throws
+                                                            SaslException {
+
+        int sha = 0;
+
+        if (mechanism.equals("SCRAM-SHA512")) {
+            sha = 512;
+        } else if (mechanism.equals("SCRAM-SHA256")) {
+            sha = 256;
+        } else if (mechanism.equals("SCRAM-SHA1")) {
+            sha = 1;
+        } else {
             return null;
         }
+
         // protocol, serverName and props is not being used
         try {
-            return new Sha1Impl(false, cbh);
+            return new ShaImpl(false, cbh, sha);
         } catch (NoSuchAlgorithmException e) {
             // The JAVA runtime don't support all the algorithms we need
             return null;

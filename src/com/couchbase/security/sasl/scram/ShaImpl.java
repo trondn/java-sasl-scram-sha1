@@ -20,8 +20,6 @@ package com.couchbase.security.sasl.scram;
 import com.couchbase.security.util.Base64;
 
 import javax.crypto.Mac;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.security.auth.callback.*;
 import javax.security.sasl.SaslClient;
@@ -33,19 +31,32 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.Key;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Minimal implementation of a SCRAM-SHA1 SASL (and server which is hardcoded
- * to use the username "user" with the password
+ * Minimal implementation of a SCRAM-SHA512, SCRAM-SHA256 and SCRAM-SHA1 SASL
+ * Client (The server interface does not try to look up the user information
+ * anyware and is hardcoded to use "user" as the username, and "pencil" as
+ * the password). I picked the values from the RFC
+ * https://www.ietf.org/rfc/rfc5802.txt so that I could compare the output
+ * with that while I was testing ;-)
+ *
+ * Please note that the implementation does not try to be super efficient
+ * (with respect to memory or CPU), I'm just trying to make it work correctly
+ * according to the RFC. We're not doing SASLPrep on the username/password
+ * in this version, because I didn't have time to look into that ;-)
+ *
+ * @author Trond Norbye
+ * @version 1.0
  */
-public class Sha1Impl implements SaslClient, SaslServer {
-    public static final String NAME = "SCRAM-SHA1";
+public class ShaImpl implements SaslClient, SaslServer {
+    private final String name;
+    private final String hmacAlgorithm;
     private final boolean client;
     private final CallbackHandler callbacks;
     private final MessageDigest digest;
-    private final int digestSize;
     private String username;
     private String clientNonce;
     private String serverNonce;
@@ -59,13 +70,31 @@ public class Sha1Impl implements SaslClient, SaslServer {
     private String server_final_message;
     private String nonce;
 
-    public Sha1Impl(boolean client, CallbackHandler cbh) throws
-                                                         NoSuchAlgorithmException {
+    public ShaImpl(boolean client, CallbackHandler cbh, int sha) throws
+                                                                 NoSuchAlgorithmException {
         this.client = client;
 
         callbacks = cbh;
-        digest = MessageDigest.getInstance("SHA-1");
-        digestSize = 20;
+        switch (sha) {
+            case 512:
+                digest = MessageDigest.getInstance("SHA-512");
+                name = "SCRAM-SHA512";
+                hmacAlgorithm = "HmacSHA512";
+                break;
+            case 256:
+                digest = MessageDigest.getInstance("SHA-256");
+                name = "SCRAM-SHA256";
+                hmacAlgorithm = "HmacSHA256";
+                break;
+            case 1:
+                digest = MessageDigest.getInstance("SHA-1");
+                name = "SCRAM-SHA1";
+                hmacAlgorithm = "HmacSHA1";
+                break;
+            default:
+                throw new RuntimeException("Invalid SHA version specified");
+        }
+
 
         // Create a random nonce. This should be random printable characters
         // and the easiest way to get that is probably just using Base64
@@ -97,7 +126,7 @@ public class Sha1Impl implements SaslClient, SaslServer {
 
     @Override
     public String getMechanismName() {
-        return NAME;
+        return name;
     }
 
     @Override
@@ -310,6 +339,7 @@ public class Sha1Impl implements SaslClient, SaslServer {
 
     /**
      * We don't support using authorization id's...
+     *
      * @return
      */
     @Override
@@ -362,12 +392,15 @@ public class Sha1Impl implements SaslClient, SaslServer {
         return name;
     }
 
+    /**
+     * Generate the HMAC with the given SHA algorithm
+     */
     private byte[] HMAC(byte[] key,
                         byte[] data) {
         final Mac mac;
 
         try {
-            mac = Mac.getInstance("HmacSHA1");
+            mac = Mac.getInstance(hmacAlgorithm);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e.getMessage());
         }
@@ -382,17 +415,56 @@ public class Sha1Impl implements SaslClient, SaslServer {
         return mac.doFinal(data);
     }
 
-    private byte[] pbkdf2(final char[] password,
+    /**
+     * Generate the hash of the function.. Unfortunately we couldn't use
+     * the one provided by the Java framework because it didn't support
+     * others than SHA1. See https://www.ietf.org/rfc/rfc5802.txt (page 6)
+     * for how it is generated.
+     *
+     * @param password   The password to use
+     * @param salt       The salt used to salt the hash function
+     * @param iterations The number of iterations to sue
+     * @return The pbkdf2 version of the password
+     */
+    private byte[] pbkdf2(final String password,
                           final byte[] salt,
                           int iterations) {
         try {
-            PBEKeySpec spec =
-                    new PBEKeySpec(password, salt, iterations, 20 * 8);
-            SecretKeyFactory skf = SecretKeyFactory.getInstance(
-                    "PBKDF2WithHmacSHA1");
-            return skf.generateSecret(spec).getEncoded();
+            Mac mac = Mac.getInstance(hmacAlgorithm);
+            // We shuld run the SASLPrep on the password, but we have
+            // restrictions on the keys allowed in the password so we
+            // don't really have to ;-)
+            Key key = new SecretKeySpec(password.getBytes(), hmacAlgorithm);
+            mac.init(key);
+            mac.update(salt);
+            // Append INT(1)
+            mac.update("\00\00\00\01".getBytes());
+            byte[] Un = mac.doFinal();
+            mac.update(Un);
+            byte[] Uprev = mac.doFinal();
+            xor(Un, Uprev);
+
+            for (int i = 2; i < iterations; ++i) {
+                mac.update(Uprev);
+                Uprev = mac.doFinal();
+                xor(Un, Uprev);
+            }
+
+            return Un;
         } catch (Throwable t) {
             throw new RuntimeException(t);
+        }
+    }
+
+    /**
+     * XOR the two arrays and store the result in the first one
+     *
+     * @param result Where to store the result
+     * @param other  The other array to xor with
+     */
+    private void xor(byte[] result, byte[] other) {
+        for (int ii = 0; ii < result.length; ++ii) {
+            result[ii] = (byte) (result[ii] ^ other[ii]);
         }
     }
 
@@ -412,11 +484,14 @@ public class Sha1Impl implements SaslClient, SaslServer {
             throw new SaslException("Password can't be null");
         }
 
-        saltedPassword =
-                pbkdf2(pw, salt, iterationCount);
+        // We shuld run the SASLPrep on the password, but we have
+        // restrictions on the keys allowed in the password so we
+        // don't really have to ;-)
+        String password = new String(pw);
+
+        saltedPassword = pbkdf2(password, salt, iterationCount);
         passwordCallback.clearPassword();
     }
-
 
     /**
      * Generate the Server Signature. It is computed as:
@@ -446,13 +521,9 @@ public class Sha1Impl implements SaslClient, SaslServer {
         byte[] clientKey = HMAC(saltedPassword, "Client Key".getBytes());
         byte[] storedKey = digest.digest(clientKey);
         byte[] clientSignature = HMAC(storedKey, getAuthMessage().getBytes());
-        byte[] clientProof = new byte[digestSize];
 
-        for (int ii = 0; ii < digestSize; ++ii) {
-            clientProof[ii] = (byte) (clientKey[ii] ^ clientSignature[ii]);
-        }
-
-        return clientProof;
+        xor(clientKey, clientSignature);
+        return clientKey;
     }
 
     private void decodeAttributes(HashMap<String, String> attributes,
@@ -492,5 +563,4 @@ public class Sha1Impl implements SaslClient, SaslServer {
         return client_first_message_bare + "," + server_first_message + "," +
                 client_final_message_without_proof;
     }
-
 }

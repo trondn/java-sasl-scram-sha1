@@ -29,6 +29,9 @@ import java.util.Map;
  * I didn't bother spending time figuring out how to register new
  * providers in the crypto framework, but that's what you should
  * do and then just nuke this class
+ *
+ * @author Trond Norbye
+ * @version 1.0
  */
 public class Sasl {
     public static SaslClient createSaslClient(String[] mechanisms,

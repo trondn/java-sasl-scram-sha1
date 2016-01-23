@@ -1,18 +1,21 @@
 /*
- *     Copyright 2016 Couchbase, Inc.
+ *      Copyright 2016 Couchbase, Inc.
  *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *        http://www.apache.org/licenses/LICENSE-2.0
  *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ *
  */
+
+package com.couchbase.security.sasl.test;
 
 import com.couchbase.security.sasl.Sasl;
 
@@ -24,17 +27,27 @@ import javax.security.sasl.SaslServer;
 import java.io.IOException;
 
 /**
- * Test program used to test the SHA1 implementation ;-)
+ * Test program used to test the SCRAM-SHAx implementations ;-)
  */
 public class Main implements CallbackHandler {
-    private void test() {
-        String[] mechs = {"SCRAM-SHA1", "CRAM-MD5", "PLAIN"};
+    private void test(String scram) {
+        String[] mechs = {scram, "CRAM-MD5", "PLAIN"};
 
         try {
             SaslClient client = Sasl.createSaslClient(mechs, null, "couchbase",
                                                       "127.0.0.1", null, this);
             SaslServer server = Sasl.createSaslServer(mechs[0], "couchbase",
                                                       "127.0.0.1", null, this);
+
+            if (client == null) {
+                System.err.println("Failed to create client");
+                return;
+            }
+
+            if (server == null) {
+                System.err.println("Failed to create server");
+                return;
+            }
 
             byte[] array = new byte[0];
             while ((array = client.evaluateChallenge(array)).length > 0) {
@@ -56,8 +69,9 @@ public class Main implements CallbackHandler {
 
     public static void main(String argv[]) {
         Main o = new Main();
-        o.test();
-
+        o.test("SCRAM-SHA1");
+        o.test("SCRAM-SHA256");
+        o.test("SCRAM-SHA512");
         System.exit(0);
     }
 
